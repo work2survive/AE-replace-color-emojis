@@ -1940,10 +1940,19 @@ def generate_jsx():
         btnExecute.onClick = function () {
             var comp = getActiveComp();
             if (!comp) {
-                alert("Please open a composition in After Effects first.");
-                return;
+                if (isBrowserSim() && typeof app !== "undefined" && app.project && typeof app.project.addComp === "function") {
+                    comp = app.project.addComp("Main Comp", 1920, 1080, 1, 10, 30);
+                } else {
+                    alert("Please open a composition in After Effects first.");
+                    return;
+                }
             }
             var textLayer = getSelectedTextLayer(comp);
+            if (!textLayer) {
+                // Auto-create demo text layer if none is selected (essential for simulator autobuild)
+                btnDemo.onClick();
+                textLayer = getSelectedTextLayer(comp);
+            }
             if (!textLayer) {
                 alert("Please select a text layer containing emojis (e.g. 😃 🚀 🔥 ❤️) or click '📝 Demo Text'.");
                 return;
@@ -1979,17 +1988,15 @@ def generate_jsx():
                     return;
                 }
 
-                var summary = "Successfully replaced " + res.emojiCount + " emoji(s) using "
+                var summary = "✨ Replaced " + res.emojiCount + " emoji(s) using "
                     + (isSplit ? "Split Method" : "Calculation Method") + " ("
-                    + (isSeparate ? (res.createdCount + " shape layers") : "1 master shape layer") + ")!\n\n"
-                    + "Vector Style: " + srcObj.label;
+                    + (isSeparate ? (res.createdCount + " shape layers") : "1 master shape layer") + ")!";
+
+                lblStatus.text = summary;
 
                 if (comp._onChanged) {
                     try { comp._onChanged(); } catch (eChg) {}
                 }
-
-                alert(summary);
-                updateSelectionStatus();
 
             } catch (err) {
                 alert("Error replacing emojis: " + err);
