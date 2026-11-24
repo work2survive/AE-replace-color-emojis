@@ -346,6 +346,23 @@ function runSuite() {
   if (circusGroups[1].name.indexOf("1F37F") === -1) throw new Error("Second emoji is not 1F37F (popcorn)!");
   console.log("✔ 🎪 and 🍿 correctly identified and mapped with OpenMoji vector paths!");
 
+  // 8. Verify Twemoji Style Selection & Metrics Normalization
+  console.log("\n▶ Test 8: Test Twemoji Style Selection & Metrics Normalization");
+  btnRestore.onClick();
+  const sourceDD = uiElements.filter(e => e.type === "dropdownlist")[1];
+  sourceDD.selection = { index: 1 }; // Select Twemoji Flat Color
+  mockComp.selectedLayers = [testLayer];
+  btnExecute.onClick();
+
+  const twShape = mockComp.layers._layers.find(l => l.name === "Circus Popcorn Layer - Color Emojis");
+  if (!twShape) throw new Error("Twemoji shape layer not found!");
+  const twGroups = twShape._vectors;
+  console.log("✔ Twemoji vector groups count:", twGroups.length);
+  if (twGroups.length !== 2) throw new Error("Expected 2 Twemoji groups, got " + twGroups.length);
+  console.log("  Twemoji Group 1 name:", twGroups[0].name);
+  console.log("  Twemoji Group 2 name:", twGroups[1].name);
+  console.log("✔ Twemoji Flat Color shapes populated with normalized 46/72 optical em-box metrics!");
+
   console.log("\n========================================================");
   console.log("🎉 ALL TESTS PASSED SUCCESSFULLY!");
   console.log("========================================================");

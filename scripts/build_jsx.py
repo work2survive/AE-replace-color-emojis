@@ -37,9 +37,12 @@ def load_fallback_data():
         wiki_data = json.load(f)
     with open(os.path.join(EMOJIS_DIR, "openmoji_color.json"), "r", encoding="utf-8") as f:
         om_color = json.load(f)
+    with open(os.path.join(EMOJIS_DIR, "twemoji_color.json"), "r", encoding="utf-8") as f:
+        tw_color = json.load(f)
 
     fallback_emojis = []
-    fallback_shapes = {}
+    fallback_om_shapes = {}
+    fallback_tw_shapes = {}
     seen = set()
     for e in idx_data["emojis"]:
         hc = e["hexcode"]
@@ -49,16 +52,19 @@ def load_fallback_data():
             rec["index"] = len(fallback_emojis) + 1
             fallback_emojis.append(rec)
             if hc in om_color:
-                fallback_shapes[hc] = om_color[hc]
+                fallback_om_shapes[hc] = om_color[hc]
+            if hc in tw_color:
+                fallback_tw_shapes[hc] = tw_color[hc]
 
     fallback_index_json = json.dumps({"version": "1.0.0", "totalCount": len(fallback_emojis), "emojis": fallback_emojis}, ensure_ascii=False, separators=(",", ":"))
     fallback_wiki_json = json.dumps(wiki_data, ensure_ascii=False, separators=(",", ":"))
-    fallback_shapes_json = json.dumps(fallback_shapes, ensure_ascii=False, separators=(",", ":"))
+    fallback_om_json = json.dumps(fallback_om_shapes, ensure_ascii=False, separators=(",", ":"))
+    fallback_tw_json = json.dumps(fallback_tw_shapes, ensure_ascii=False, separators=(",", ":"))
 
-    return fallback_index_json, fallback_wiki_json, fallback_shapes_json
+    return fallback_index_json, fallback_wiki_json, fallback_om_json, fallback_tw_json
 
 def generate_jsx():
-    fallback_index_json, fallback_wiki_json, fallback_shapes_json = load_fallback_data()
+    fallback_index_json, fallback_wiki_json, fallback_om_json, fallback_tw_json = load_fallback_data()
 
     header = r'''/**
  * ============================================================================
@@ -204,7 +210,9 @@ def generate_jsx():
 
     embedded_data = f"""    var FALLBACK_INDEX_DATA = {fallback_index_json};
     var FALLBACK_WIKI_DATA = {fallback_wiki_json};
-    var FALLBACK_SHAPES_DATA = {fallback_shapes_json};
+    var FALLBACK_OPENMOJI_DATA = {fallback_om_json};
+    var FALLBACK_TWEMOJI_DATA = {fallback_tw_json};
+    var FALLBACK_SHAPES_DATA = FALLBACK_OPENMOJI_DATA;
 """
 
     body = r'''
@@ -352,16 +360,24 @@ def generate_jsx():
         }
     }
 
+    function scalePointList(pts, s) {
+        var out = [];
+        for (var i = 0; i < pts.length; i++) {
+            out.push([Math.round(pts[i][0] * s * 100) / 100, Math.round(pts[i][1] * s * 100) / 100]);
+        }
+        return out;
+    }
+
     function loadAllEmojiDatabases() {
         var idxData = loadJSONFromEmojisSubfolder("emoji_index.json") || FALLBACK_INDEX_DATA;
         var wikiData = loadJSONFromEmojisSubfolder("wikipedia_emoticons.json") || FALLBACK_WIKI_DATA;
         rebuildLookupTables(idxData, wikiData);
 
         var omColor = loadJSONFromEmojisSubfolder("openmoji_color.json");
-        shapeDatabases.openmoji_color = omColor || FALLBACK_SHAPES_DATA;
+        shapeDatabases.openmoji_color = omColor || FALLBACK_OPENMOJI_DATA;
 
         var twColor = loadJSONFromEmojisSubfolder("twemoji_color.json");
-        shapeDatabases.twemoji_color = twColor || shapeDatabases.openmoji_color;
+        shapeDatabases.twemoji_color = twColor || FALLBACK_TWEMOJI_DATA;
 
         var omBlack = loadJSONFromEmojisSubfolder("openmoji_black.json");
         shapeDatabases.openmoji_black = omBlack || shapeDatabases.openmoji_color;
@@ -377,6 +393,9 @@ def generate_jsx():
             if (shapeDatabases.twemoji_color && shapeDatabases.twemoji_color[hc]) {
                 shapes = shapeDatabases.twemoji_color[hc];
             }
+            if (!shapes && typeof FALLBACK_TWEMOJI_DATA !== "undefined" && FALLBACK_TWEMOJI_DATA[hc]) {
+                shapes = FALLBACK_TWEMOJI_DATA[hc];
+            }
         } else if (sourceId === "openmoji_black") {
             if (shapeDatabases.openmoji_black && shapeDatabases.openmoji_black[hc]) {
                 shapes = shapeDatabases.openmoji_black[hc];
@@ -387,13 +406,61 @@ def generate_jsx():
             shapes = shapeDatabases.openmoji_color[hc];
         }
 
-        if (!shapes && FALLBACK_SHAPES_DATA[hc]) {
+        if (!shapes && typeof FALLBACK_OPENMOJI_DATA !== "undefined" && FALLBACK_OPENMOJI_DATA[hc]) {
+            shapes = FALLBACK_OPENMOJI_DATA[hc];
+        }
+
+        if (!shapes && FALLBACK_SHAPES_DATA && FALLBACK_SHAPES_DATA[hc]) {
             shapes = FALLBACK_SHAPES_DATA[hc];
         }
 
         // If shapes not found in specified source or fallbacks, return empty list (do not fake smiley)
         if (!shapes || shapes.length === 0) {
             return [];
+        }
+
+        // Auto-normalize raw unscaled Twemoji shapes (if max coordinate > 28, scale to 46/72 standard em-box)
+        if (sourceId === "twemoji_color") {
+            var maxCoord = 0;
+            for (var si = 0; si < shapes.length; si++) {
+                var shp = shapes[si];
+                var vList = shp.v || [];
+                for (var vi = 0; vi < vList.length; vi++) {
+                    var ax = Math.abs(vList[vi][0]);
+                    var ay = Math.abs(vList[vi][1]);
+                    if (ax > maxCoord) maxCoord = ax;
+                    if (ay > maxCoord) maxCoord = ay;
+                }
+            }
+            if (maxCoord > 28) {
+                var normScale = 46.0 / 72.0;
+                var rescaled = [];
+                for (var rsi = 0; rsi < shapes.length; rsi++) {
+                    var rItem = {};
+                    for (var key in shapes[rsi]) {
+                        if (shapes[rsi].hasOwnProperty(key)) rItem[key] = shapes[rsi][key];
+                    }
+                    if (rItem.v) rItem.v = scalePointList(rItem.v, normScale);
+                    if (rItem.i) rItem.i = scalePointList(rItem.i, normScale);
+                    if (rItem.o) rItem.o = scalePointList(rItem.o, normScale);
+                    if (rItem.p) {
+                        var newP = [];
+                        for (var pi = 0; pi < rItem.p.length; pi++) {
+                            var spCopy = {};
+                            for (var pKey in rItem.p[pi]) {
+                                if (rItem.p[pi].hasOwnProperty(pKey)) spCopy[pKey] = rItem.p[pi][pKey];
+                            }
+                            if (spCopy.v) spCopy.v = scalePointList(spCopy.v, normScale);
+                            if (spCopy.i) spCopy.i = scalePointList(spCopy.i, normScale);
+                            if (spCopy.o) spCopy.o = scalePointList(spCopy.o, normScale);
+                            newP.push(spCopy);
+                        }
+                        rItem.p = newP;
+                    }
+                    rescaled.push(rItem);
+                }
+                shapes = rescaled;
+            }
         }
 
         if (sourceId === "openmoji_flat") {
