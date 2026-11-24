@@ -327,6 +327,25 @@ function runSuite() {
   }
   console.log("✔ All split layers removed and original text layer completely restored!");
 
+  // 7. Verify Specific Reported Emojis (🎪 and 🍿)
+  console.log("\n▶ Test 7: Test Circus Tent 🎪 and Popcorn 🍿 Identification and Placement");
+  const testLayer = mockComp.layers.addText("Testing emojis 🎪🍿 Let's see if this works!");
+  testLayer.name = "Circus Popcorn Layer";
+  mockComp.selectedLayers = [testLayer];
+  methodDD.selection = { index: 0 }; // Calculation Method
+  btnExecute.onClick();
+
+  const circusShape = mockComp.layers._layers.find(l => l.name === "Circus Popcorn Layer - Color Emojis");
+  if (!circusShape) throw new Error("Circus Popcorn shape layer not found!");
+  const circusGroups = circusShape._vectors;
+  console.log("✔ Detected and created vector groups count:", circusGroups.length);
+  if (circusGroups.length !== 2) throw new Error("Expected exactly 2 emojis (🎪 and 🍿), got " + circusGroups.length);
+  console.log("  Group 1 name:", circusGroups[0].name);
+  console.log("  Group 2 name:", circusGroups[1].name);
+  if (circusGroups[0].name.indexOf("1F3AA") === -1) throw new Error("First emoji is not 1F3AA (circus tent)!");
+  if (circusGroups[1].name.indexOf("1F37F") === -1) throw new Error("Second emoji is not 1F37F (popcorn)!");
+  console.log("✔ 🎪 and 🍿 correctly identified and mapped with OpenMoji vector paths!");
+
   console.log("\n========================================================");
   console.log("🎉 ALL TESTS PASSED SUCCESSFULLY!");
   console.log("========================================================");

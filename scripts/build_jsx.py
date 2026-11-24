@@ -24,6 +24,10 @@ FALLBACK_HEXCODES = [
     "1F62E", "1F633", "1F634", "1F635", "1F641", "1F63A", "1F914", "1F929",
     "1F937", "1F64C", "1FAE1", "2764", "1F494", "1F44D", "1F44E", "1F525",
     "1F4AF", "1F4A9", "2728", "1F680", "1F480", "1F389", "2705", "26A0",
+    # All 30 EMOJI_POOL emojis from AE_JS_builder
+    "1F4A1", "1F3A8", "1F31F", "1F48E", "1F3AF", "26A1", "1F308", "1F355",
+    "2615", "1F388", "1F340", "1F3C6", "1F3B5", "1F916", "1F30D", "1F369",
+    "1F37F", "1F3B8", "1F3AA", "1F951", "1F98A", "1F431", "1F576", "1F47E",
 ]
 
 def load_fallback_data():
@@ -387,12 +391,9 @@ def generate_jsx():
             shapes = FALLBACK_SHAPES_DATA[hc];
         }
 
-        // If shapes not found, fall back to smiling face (1F642 or 1F603)
+        // If shapes not found in specified source or fallbacks, return empty list (do not fake smiley)
         if (!shapes || shapes.length === 0) {
-            shapes = (shapeDatabases.openmoji_color && shapeDatabases.openmoji_color["1F642"])
-                || FALLBACK_SHAPES_DATA["1F642"]
-                || FALLBACK_SHAPES_DATA["1F603"]
-                || [];
+            return [];
         }
 
         if (sourceId === "openmoji_flat") {
@@ -999,7 +1000,14 @@ def generate_jsx():
                 if (!sp.v || sp.v.length < 2) continue;
                 var pathGrp = partVecs.addProperty("ADBE Vector Shape - Group");
                 pathGrp.name = "Path_" + (spIdx + 1);
-                var myShape = new Shape();
+                var ShapeClass = (typeof Shape !== "undefined")
+                    ? Shape
+                    : ((typeof globalObj !== "undefined" && globalObj.Shape)
+                        ? globalObj.Shape
+                        : ((typeof window !== "undefined" && window.Shape)
+                            ? window.Shape
+                            : function () { this.vertices = []; this.inTangents = []; this.outTangents = []; this.closed = false; }));
+                var myShape = new ShapeClass();
                 myShape.vertices = sp.v;
                 myShape.inTangents = sp.i || [];
                 myShape.outTangents = sp.o || [];
@@ -1066,8 +1074,6 @@ def generate_jsx():
         var props = getTextBoxProperties(comp, origLayer);
         if (!props || !props.metrics) return null;
 
-        alignAnchorPointToJustification(origLayer, props);
-
         var sourceId = options.sourceId || "openmoji_color";
         var sizeMult = (typeof options.sizeMultiplier === "number") ? options.sizeMultiplier : 100;
         var outlinePct = (typeof options.outlineWidth === "number") ? options.outlineWidth : 100;
@@ -1084,9 +1090,14 @@ def generate_jsx():
         var measurer = createMeasureHelper(comp, props);
 
         // Determine first line baseline relative to original text layer local origin:
-        var rFirst = measurer.measureRect(lines.length > 0 ? lines[0] : "A");
-        var ascender = Math.abs(rFirst.top) || (props.fontSize * 0.78);
-        var firstBaselineY = (props.isBox ? props.boxPos[1] : props.sRect.top) + ascender;
+        // For Point Text: in After Effects local coordinates, line 1 baseline is at Y = 0.
+        // For Box Text: line 1 baseline is at boxPos[1] + ascender.
+        var firstBaselineY = 0;
+        if (props.isBox) {
+            var rFirst = measurer.measureRect(lines.length > 0 ? lines[0] : "A");
+            var ascender = Math.abs(rFirst.top) || (props.fontSize * 0.78);
+            firstBaselineY = props.boxPos[1] + ascender;
+        }
 
         var matchedEmojis = [];
         var createdLayers = [];
@@ -1142,7 +1153,7 @@ def generate_jsx():
             // 2. Hide Monochrome Font Emojis on Intact Text Layer via native Text Animator (Opacity = 0%)
             try {
                 var textPropGroup = origLayer.property("ADBE Text Properties");
-                var animators = textPropGroup ? textPropGroup.property("ADBE Text Animators") : null;
+                var animators = textPropGroup ? (textPropGroup.property("ADBE Text Animators") || textPropGroup.addProperty("ADBE Text Animators")) : null;
                 if (animators) {
                     var existingAnim = animators.property("Replace Color Emojis - Hide Font Emojis");
                     if (existingAnim) {
@@ -1235,8 +1246,9 @@ def generate_jsx():
                     buildVectorGroupForEmoji(rootVectors, mItem.entry, sourceId, props.fontSize, mItem.posX, mItem.posY, outlinePct, showOutlines);
                 }
 
+                var origAP = (origLayer.transform && origLayer.transform.anchorPoint) ? origLayer.transform.anchorPoint.value : [0, 0, 0];
                 shapeLayer.parent = origLayer;
-                shapeLayer.transform.position.setValue([0, 0, 0]);
+                shapeLayer.transform.position.setValue([-origAP[0], -origAP[1], 0]);
                 shapeLayer.transform.anchorPoint.setValue([0, 0, 0]);
                 shapeLayer.transform.scale.setValue([100, 100, 100]);
 
@@ -1250,6 +1262,7 @@ def generate_jsx():
 
             } else {
                 // Separate Shape Layer per Emoji
+                var origAP = (origLayer.transform && origLayer.transform.anchorPoint) ? origLayer.transform.anchorPoint.value : [0, 0, 0];
                 for (var sei = 0; sei < matchedEmojis.length; sei++) {
                     var sItem = matchedEmojis[sei];
                     var sLayer = comp.layers.addShape();
@@ -1275,7 +1288,7 @@ def generate_jsx():
 
                     sLayer.parent = origLayer;
                     sLayer.transform.anchorPoint.setValue([0, 0, 0]);
-                    sLayer.transform.position.setValue([sItem.posX, sItem.posY, 0]);
+                    sLayer.transform.position.setValue([sItem.posX - origAP[0], sItem.posY - origAP[1], 0]);
                     sLayer.transform.scale.setValue([100, 100, 100]);
 
                     try {
@@ -1283,7 +1296,8 @@ def generate_jsx():
                             'var ox = 0, oy = 0;',
                             'try { ox = effect("Offset X")(1).value; } catch(e1) {}',
                             'try { oy = effect("Offset Y")(1).value; } catch(e2) {}',
-                            '[' + sItem.posX.toFixed(2) + ' + ox, ' + sItem.posY.toFixed(2) + ' + oy, 0];'
+                            'var ap = [0, 0]; try { ap = parent.anchorPoint.value; } catch(e3) {}',
+                            '[' + sItem.posX.toFixed(2) + ' - ap[0] + ox, ' + sItem.posY.toFixed(2) + ' - ap[1] + oy, 0];'
                         ].join('\n');
                     } catch (ePos) {}
 
@@ -1331,8 +1345,6 @@ def generate_jsx():
         var props = getTextBoxProperties(comp, origLayer);
         if (!props || !props.metrics) return null;
 
-        alignAnchorPointToJustification(origLayer, props);
-
         var sourceId = options.sourceId || "openmoji_color";
         var sizeMult = (typeof options.sizeMultiplier === "number") ? options.sizeMultiplier : 100;
         var outlinePct = (typeof options.outlineWidth === "number") ? options.outlineWidth : 100;
@@ -1347,9 +1359,14 @@ def generate_jsx():
 
         var measurer = createMeasureHelper(comp, props);
 
-        var rFirst = measurer.measureRect(lines.length > 0 ? lines[0] : "A");
-        var ascender = Math.abs(rFirst.top) || (props.fontSize * 0.78);
-        var firstBaselineY = (props.isBox ? props.boxPos[1] : props.sRect.top) + ascender;
+        var firstBaselineY = 0;
+        if (props.isBox) {
+            var rFirst = measurer.measureRect(lines.length > 0 ? lines[0] : "A");
+            var ascender = Math.abs(rFirst.top) || (props.fontSize * 0.78);
+            firstBaselineY = props.boxPos[1] + ascender;
+        }
+
+        var origAP = (origLayer.transform && origLayer.transform.anchorPoint) ? origLayer.transform.anchorPoint.value : [0, 0, 0];
 
         var createdLayers = [];
         var totalEmojiCount = 0;
@@ -1385,7 +1402,7 @@ def generate_jsx():
 
                     var rL = lineLayer.sourceRectAtTime(comp.time, false);
                     lineLayer.transform.anchorPoint.setValue([rL.left, rL.top, 0]);
-                    lineLayer.transform.position.setValue([lineLeftX + rL.left, lineBaselineY + rL.top, 0]);
+                    lineLayer.transform.position.setValue([lineLeftX + rL.left - origAP[0], lineBaselineY + rL.top - origAP[1], 0]);
                     lineLayer.parent = origLayer;
                     createdLayers.push(lineLayer);
                     continue;
@@ -1433,7 +1450,7 @@ def generate_jsx():
 
                         var rSeg = txtLayer.sourceRectAtTime(comp.time, false);
                         txtLayer.transform.anchorPoint.setValue([rSeg.left, rSeg.top, 0]);
-                        txtLayer.transform.position.setValue([segX + rSeg.left, lineBaselineY + rSeg.top, 0]);
+                        txtLayer.transform.position.setValue([segX + rSeg.left - origAP[0], lineBaselineY + rSeg.top - origAP[1], 0]);
                         txtLayer.parent = origLayer;
                         createdLayers.push(txtLayer);
 
@@ -1469,7 +1486,7 @@ def generate_jsx():
 
                         emoLayer.parent = origLayer;
                         emoLayer.transform.anchorPoint.setValue([0, 0, 0]);
-                        emoLayer.transform.position.setValue([emojiCenterX, emojiCenterY, 0]);
+                        emoLayer.transform.position.setValue([emojiCenterX - origAP[0], emojiCenterY - origAP[1], 0]);
                         emoLayer.transform.scale.setValue([100, 100, 100]);
 
                         try {
@@ -1477,7 +1494,8 @@ def generate_jsx():
                                 'var ox = 0, oy = 0;',
                                 'try { ox = effect("Offset X")(1).value; } catch(e1) {}',
                                 'try { oy = effect("Offset Y")(1).value; } catch(e2) {}',
-                                '[' + emojiCenterX.toFixed(2) + ' + ox, ' + emojiCenterY.toFixed(2) + ' + oy, 0];'
+                                'var ap = [0, 0]; try { ap = parent.anchorPoint.value; } catch(e3) {}',
+                                '[' + emojiCenterX.toFixed(2) + ' - ap[0] + ox, ' + emojiCenterY.toFixed(2) + ' - ap[1] + oy, 0];'
                             ].join('\n');
                         } catch (ePos2) {}
 
@@ -1607,10 +1625,15 @@ def generate_jsx():
     // 11. SCRIPTUI INTERFACE
     // =========================================================================
     function buildUI(thisObj) {
-        var isDockable = (thisObj instanceof Panel);
+        var isDockable = (typeof Panel !== "undefined" && thisObj instanceof Panel);
+        var WinClass = (typeof Window !== "undefined")
+            ? Window
+            : ((typeof globalObj !== "undefined" && typeof globalObj.Window !== "undefined")
+                ? globalObj.Window
+                : ((typeof window !== "undefined") ? window.Window : null));
         var win = isDockable
             ? thisObj
-            : new Window("palette", SCRIPT_TITLE + " " + SCRIPT_VERSION, undefined, { resizeable: true });
+            : (WinClass ? new WinClass("palette", SCRIPT_TITLE + " " + SCRIPT_VERSION, undefined, { resizeable: true }) : null);
 
         win.orientation = "column";
         win.alignChildren = ["fill", "top"];
@@ -1820,8 +1843,15 @@ def generate_jsx():
         // EVENT HANDLERS & LOGIC
         // ---------------------------------------------------------------------
         function getActiveComp() {
-            if (typeof app !== "undefined" && app.project && app.project.activeItem && (app.project.activeItem instanceof CompItem)) {
-                return app.project.activeItem;
+            var activeApp = (typeof app !== "undefined") ? app : ((typeof globalObj !== "undefined" && globalObj.app) ? globalObj.app : ((typeof window !== "undefined") ? window.app : null));
+            if (activeApp && activeApp.project && activeApp.project.activeItem) {
+                var itm = activeApp.project.activeItem;
+                if (typeof CompItem !== "undefined") {
+                    if (itm instanceof CompItem) return itm;
+                }
+                if (itm.typeName === "Composition" || itm.layers) {
+                    return itm;
+                }
             }
             return null;
         }
@@ -2028,7 +2058,7 @@ def generate_jsx():
         };
 
         // Live selection sync in AE_JS_builder simulator
-        if (typeof window !== "undefined") {
+        if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
             window.addEventListener("ae-layer-selection-changed", function () {
                 try { updateSelectionStatus(); } catch (e) {}
             });
@@ -2039,12 +2069,17 @@ def generate_jsx():
 
         updateSelectionStatus();
 
-        if (win instanceof Window) {
-            win.center();
-            win.show();
-        } else {
-            win.layout.layout(true);
+        if (win && !isDockable && typeof win.show === "function") {
+            try { win.center(); } catch (eCen) {}
+            try { win.show(); } catch (eShw) {}
+        } else if (win && win.layout) {
+            try { win.layout.layout(true); } catch (eLay) {}
         }
+
+        win._btnExecute = btnExecute;
+        win._btnRestore = btnRestore;
+        win._btnScan = btnScan;
+        try { globalObj._aeReplaceColorEmojisWin = win; } catch (eGWin) {}
 
         return win;
     }
