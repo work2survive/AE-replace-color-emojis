@@ -10,7 +10,7 @@ function createMockAEP() {
       name: name,
       _children: [],
       property: function (propName) {
-        if (propName === "ADBE Vector Transform Group") {
+        if (propName === "ADBE Vector Transform Group" || propName === "Transform") {
           return {
             property: function (trProp) {
               return { value: [0, 0], setValue: function (v) { this.value = v; } };
@@ -80,8 +80,14 @@ function createMockAEP() {
               if (!this._animators) {
                 this._animators = {
                   _list: [],
-                  property: function (n) { return this._list.find(a => a.name === n); },
+                  get numProperties() { return this._list.length; },
+                  property: function (n) {
+                    if (n === "ADBE Text Animators" || n === "Animators") return this;
+                    if (typeof n === "number") return this._list[n - 1];
+                    return this._list.find(a => a.name === n);
+                  },
                   addProperty: function (n) {
+                    if (n === "ADBE Text Animators" || n === "Animators") return this;
                     const anim = {
                       name: n,
                       _props: [],
@@ -100,24 +106,17 @@ function createMockAEP() {
                           };
                         }
                         if (pName === "ADBE Text Selectors" || pName === "Selectors") {
-                          if (!this._selectors) {
-                            this._selectors = {
-                              _selList: [],
-                              get numProperties() { return this._selList.length; },
-                              property: function (i) { return this._selList[i - 1]; },
-                              addProperty: function (selType) {
-                                const s = {
-                                  name: selType,
-                                  property: function (propName) {
-                                    return { setValue: function (v) { this.value = v; } };
-                                  }
-                                };
-                                this._selList.push(s);
-                                return s;
-                              }
-                            };
-                          }
-                          return this._selectors;
+                          return {
+                            numProperties: 0,
+                            property: function () { return null; },
+                            addProperty: function () {
+                              return {
+                                property: function () {
+                                  return { setValue: function () {} };
+                                }
+                              };
+                            }
+                          };
                         }
                         return null;
                       }
@@ -127,17 +126,22 @@ function createMockAEP() {
                   }
                 };
               }
-              return {
-                property: (sub) => (sub === "ADBE Text Animators" ? this._animators : null)
-              };
+              return this._animators;
             }
             return null;
           },
           sourceRectAtTime: function () {
-            return { left: 0, top: -38, width: (this._textDoc.text.length * 26), height: 48 };
+            const fs = this._textDoc ? this._textDoc.fontSize : 48;
+            const len = (this._textDoc && this._textDoc.text) ? this._textDoc.text.length : 0;
+            return {
+              left: 0,
+              top: -(fs * 0.78),
+              width: len * (fs * 0.55),
+              height: fs
+            };
           },
           remove: function () {
-            const idx = mockComp.layers._layers.indexOf(this);
+            const idx = mockComp.layers._layers.indexOf(l);
             if (idx !== -1) mockComp.layers._layers.splice(idx, 1);
           }
         };
@@ -148,8 +152,8 @@ function createMockAEP() {
         const sl = {
           name: "Shape Layer",
           matchName: "ADBE Vector Layer",
-          enabled: true,
-          guideLayer: false,
+          comment: "",
+          parent: null,
           transform: {
             position: { value: [0, 0, 0], setValue: function (v) { this.value = v; } },
             anchorPoint: { value: [0, 0, 0], setValue: function (v) { this.value = v; } },
@@ -157,23 +161,33 @@ function createMockAEP() {
           },
           _effects: [],
           _vectors: [],
-          property: function (name) {
-            if (name === "ADBE Effect Parade" || name === "Effects") {
+          property: function (propName) {
+            if (propName === "ADBE Effect Parade" || propName === "Effects") {
               return {
-                property: (en) => sl._effects.find(e => e.name === en),
-                addProperty: (type) => {
-                  const eff = { name: type, property: (idx) => ({ value: null, setValue: function (v) { this.value = v; } }) };
+                property: function (effName) {
+                  return sl._effects.find(e => e.name === effName);
+                },
+                addProperty: function (effType) {
+                  const eff = {
+                    name: effType,
+                    property: function () {
+                      return { value: 0, setValue: function (v) { this.value = v; } };
+                    }
+                  };
                   sl._effects.push(eff);
                   return eff;
                 }
               };
             }
-            if (name === "ADBE Root Vectors Group" || name === "Contents") {
+            if (propName === "ADBE Root Vectors Group" || propName === "Contents") {
               return {
-                get numProperties() { return sl._vectors.length; },
-                property: (idx) => sl._vectors[idx - 1],
-                addProperty: function (groupType) {
-                  const grp = createVectorGroup(groupType);
+                numProperties: sl._vectors.length,
+                property: function (idxOrName) {
+                  if (typeof idxOrName === "number") return sl._vectors[idxOrName - 1];
+                  return sl._vectors.find(v => v.name === idxOrName);
+                },
+                addProperty: function (vType) {
+                  const grp = createVectorGroup(vType);
                   sl._vectors.push(grp);
                   return grp;
                 }
@@ -182,13 +196,16 @@ function createMockAEP() {
             return null;
           },
           remove: function () {
-            const idx = mockComp.layers._layers.indexOf(this);
+            const idx = mockComp.layers._layers.indexOf(sl);
             if (idx !== -1) mockComp.layers._layers.splice(idx, 1);
           }
         };
         mockComp.layers._layers.push(sl);
         return sl;
       }
+    },
+    layer: function (idx) {
+      return this.layers._layers[idx - 1];
     }
   };
   Object.setPrototypeOf(mockComp, CompItem.prototype);
@@ -205,14 +222,25 @@ function runSuite() {
       type: what,
       text: text,
       value: false,
+      items: [],
       selection: { index: 0 },
-      add: function (w2, b2, t2) { return makeUIElement(w2, t2); },
+      add: function (w2, b2, t2) {
+        if (what === "dropdownlist" && w2 === "item") {
+          const it = { text: b2, index: el.items.length };
+          el.items.push(it);
+          return it;
+        }
+        return makeUIElement(w2, t2);
+      },
       preferredSize: {},
       alignment: [],
       margins: [],
       spacing: 0,
       graphics: { foregroundColor: null, newPen: () => ({}) }
     };
+    if (Array.isArray(text)) {
+      el.items = text.map((t, idx) => ({ text: t, index: idx }));
+    }
     uiElements.push(el);
     return el;
   }
@@ -244,10 +272,10 @@ function runSuite() {
   const jsxPath = path.join(__dirname, "..", "AE_Replace_Color_Emojis.jsx");
   const code = fs.readFileSync(jsxPath, "utf8");
 
-  console.log("▶ Loading AE_Replace_Color_Emojis.jsx into VM...");
+  console.log("▶ Loading rewritten AE_Replace_Color_Emojis.jsx into VM...");
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox);
-  console.log("✔ Script initialized. ScriptUI UI elements count:", uiElements.length);
+  console.log("✔ Script initialized. Clean UI elements count:", uiElements.length);
 
   // 1. Trigger Demo Text creation
   console.log("\n▶ Test 1: Create Demo Text with Emojis");
@@ -260,97 +288,63 @@ function runSuite() {
   console.log("✔ Demo text created:", JSON.stringify(demoLayer._textDoc.text));
   mockComp.selectedLayers = [demoLayer];
 
-  // 2. Scan Emojis Preview
-  console.log("\n▶ Test 2: Scan Emojis in selected text");
-  const btnScan = uiElements.find(e => e.text === "👀 Scan Emojis");
-  btnScan.onClick();
-  const lastAlert = alerts[alerts.length - 1];
-  console.log("✔ Scan alert preview:", lastAlert.replace(/\n+/g, " | "));
-  if (lastAlert.indexOf("Found") === -1) throw new Error("Scan did not detect emojis!");
-
-  // 3. Execute Calculation Method (Default)
-  console.log("\n▶ Test 3: Execute Calculation Method (Intact Text Layer)");
+  // 2. Execute Replacement (OpenMoji Color)
+  console.log("\n▶ Test 2: Replace Font Emojis with OpenMoji Color Shapes");
   const btnExecute = uiElements.find(e => e.text === "✨ Replace Font Emojis with Color Emojis");
+  if (!btnExecute) throw new Error("btnExecute button not found!");
   btnExecute.onClick();
 
   const colorEmojiShape = mockComp.layers._layers.find(l => l.name.indexOf("- Color Emojis") !== -1);
   if (!colorEmojiShape) throw new Error("Master Color Emojis shape layer was not created!");
-  console.log("✔ Color Emojis shape layer created:", colorEmojiShape.name);
-  console.log("✔ Effect sliders attached:", colorEmojiShape._effects.map(e => e.name));
+  console.log("✔ Master Shape Layer created:", colorEmojiShape.name);
+  console.log("✔ Sliders attached:", colorEmojiShape._effects.map(e => e.name));
   console.log("✔ Vector emoji groups populated:", colorEmojiShape._vectors.length);
-  if (colorEmojiShape._vectors.length === 0) throw new Error("Vector groups were not populated!");
+  if (colorEmojiShape._vectors.length < 5) throw new Error("Expected at least 5 emoji groups!");
 
-  // Check Text Animator
+  // Check Text Animator Opacity 0%
   const animators = demoLayer._animators;
   const hideAnim = animators.property("Replace Color Emojis - Hide Font Emojis");
   if (!hideAnim) throw new Error("Hide Font Emojis animator was not attached to original text layer!");
-  console.log("✔ Text Animator attached to original layer to hide monochrome font emojis (Opacity = 0%)");
+  console.log("✔ Native Text Animator attached (Opacity = 0%) to hide monochrome font glyphs");
 
-  // 4. Restore original text layer
-  console.log("\n▶ Test 4: Restore Original Text Layer");
-  const btnRestore = uiElements.find(e => e.text === "↺ Remove Emojis & Restore Original Text");
+  // 3. Restore original text layer
+  console.log("\n▶ Test 3: Restore Original Text Layer");
+  const btnRestore = uiElements.find(e => e.text === "↺ Restore Original Text");
+  if (!btnRestore) throw new Error("btnRestore button not found!");
   btnRestore.onClick();
+
   if (mockComp.layers._layers.find(l => l.name.indexOf("- Color Emojis") !== -1)) {
     throw new Error("Emoji shape layer was not removed during restore!");
   }
   if (animators._list.find(a => a.name === "Replace Color Emojis - Hide Font Emojis")) {
     throw new Error("Hide animator was not removed during restore!");
   }
-  console.log("✔ Original text layer restored cleanly!");
+  console.log("✔ Shape layer and Text Animator removed cleanly; text restored to 100% original state!");
 
-  // 5. Execute Split Method (Decomposition)
-  console.log("\n▶ Test 5: Execute Split Method (Decomposition)");
-  const methodDD = uiElements.filter(e => e.type === "dropdownlist")[0];
-  methodDD.selection = { index: 1 }; // Split Method
-  mockComp.selectedLayers = [demoLayer];
-  btnExecute.onClick();
-
-  console.log("✔ Split layers created. Total comp layers:", mockComp.layers._layers.length);
-  const textSegments = mockComp.layers._layers.filter(l => l.name.indexOf("[Text]") !== -1);
-  const emojiSegments = mockComp.layers._layers.filter(l => l.name.indexOf("[Emoji]") !== -1);
-  console.log("✔ Created", textSegments.length, "text segment layers and", emojiSegments.length, "emoji shape layers.");
-  if (emojiSegments.length === 0) throw new Error("No emoji layers created in Split Method!");
-  if (demoLayer.enabled !== false || demoLayer.guideLayer !== true) {
-    throw new Error("Original text layer was not marked as hidden guideline!");
-  }
-  console.log("✔ Original text layer safely hidden as guideline (guideLayer=true, enabled=false)");
-
-  // 6. Restore after Split Method
-  console.log("\n▶ Test 6: Restore after Split Method");
-  btnRestore.onClick();
-  if (demoLayer.enabled !== true || demoLayer.guideLayer !== false) {
-    throw new Error("Original text layer was not unhidden after restore!");
-  }
-  const remainingChildren = mockComp.layers._layers.filter(l => l.comment === "AE_COLOR_EMOJI_CHILD");
-  if (remainingChildren.length > 0) {
-    throw new Error("Remaining child layers after restore: " + remainingChildren.length);
-  }
-  console.log("✔ All split layers removed and original text layer completely restored!");
-
-  // 7. Verify Specific Reported Emojis (🎪 and 🍿)
-  console.log("\n▶ Test 7: Test Circus Tent 🎪 and Popcorn 🍿 Identification and Placement");
+  // 4. Verify Specific Reported Emojis (🎪 and 🍿)
+  console.log("\n▶ Test 4: Circus Tent 🎪 and Popcorn 🍿 Identification and Vector Placement");
   const testLayer = mockComp.layers.addText("Testing emojis 🎪🍿 Let's see if this works!");
   testLayer.name = "Circus Popcorn Layer";
   mockComp.selectedLayers = [testLayer];
-  methodDD.selection = { index: 0 }; // Calculation Method
   btnExecute.onClick();
 
   const circusShape = mockComp.layers._layers.find(l => l.name === "Circus Popcorn Layer - Color Emojis");
   if (!circusShape) throw new Error("Circus Popcorn shape layer not found!");
   const circusGroups = circusShape._vectors;
-  console.log("✔ Detected and created vector groups count:", circusGroups.length);
+  console.log("✔ Created vector groups count:", circusGroups.length);
   if (circusGroups.length !== 2) throw new Error("Expected exactly 2 emojis (🎪 and 🍿), got " + circusGroups.length);
-  console.log("  Group 1 name:", circusGroups[0].name);
-  console.log("  Group 2 name:", circusGroups[1].name);
+  console.log("  Group 1:", circusGroups[0].name);
+  console.log("  Group 2:", circusGroups[1].name);
   if (circusGroups[0].name.indexOf("1F3AA") === -1) throw new Error("First emoji is not 1F3AA (circus tent)!");
   if (circusGroups[1].name.indexOf("1F37F") === -1) throw new Error("Second emoji is not 1F37F (popcorn)!");
-  console.log("✔ 🎪 and 🍿 correctly identified and mapped with OpenMoji vector paths!");
+  console.log("✔ 🎪 and 🍿 correctly identified and populated with cubic Bézier vector paths!");
 
-  // 8. Verify Twemoji Style Selection & Metrics Normalization
-  console.log("\n▶ Test 8: Test Twemoji Style Selection & Metrics Normalization");
+  // 5. Verify Twemoji Style Selection & Metrics Normalization
+  console.log("\n▶ Test 5: Twemoji Style Selection & Metrics Normalization");
   btnRestore.onClick();
-  const sourceDD = uiElements.filter(e => e.type === "dropdownlist")[1];
-  sourceDD.selection = { index: 1 }; // Select Twemoji Flat Color
+  const styleDD = uiElements.find(e => e.type === "dropdownlist");
+  if (!styleDD) throw new Error("Style dropdown not found!");
+  styleDD.selection = { index: 1 }; // Select Twemoji Flat Color
   mockComp.selectedLayers = [testLayer];
   btnExecute.onClick();
 
@@ -359,8 +353,8 @@ function runSuite() {
   const twGroups = twShape._vectors;
   console.log("✔ Twemoji vector groups count:", twGroups.length);
   if (twGroups.length !== 2) throw new Error("Expected 2 Twemoji groups, got " + twGroups.length);
-  console.log("  Twemoji Group 1 name:", twGroups[0].name);
-  console.log("  Twemoji Group 2 name:", twGroups[1].name);
+  console.log("  Twemoji Group 1:", twGroups[0].name);
+  console.log("  Twemoji Group 2:", twGroups[1].name);
   console.log("✔ Twemoji Flat Color shapes populated with normalized 46/72 optical em-box metrics!");
 
   console.log("\n========================================================");
