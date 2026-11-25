@@ -9,11 +9,19 @@ function createMockAEP() {
     const grp = {
       name: name,
       _children: [],
+      _trProps: {},
       property: function (propName) {
         if (propName === "ADBE Vector Transform Group" || propName === "Transform") {
+          const self = this;
           return {
             property: function (trProp) {
-              return { value: [0, 0], setValue: function (v) { this.value = v; } };
+              const key = (trProp === "ADBE Vector Position" || trProp === "Position") ? "Position" :
+                          (trProp === "ADBE Vector Anchor Point" || trProp === "Anchor Point") ? "Anchor Point" :
+                          (trProp === "ADBE Vector Scale" || trProp === "Scale") ? "Scale" : trProp;
+              if (!self._trProps[key]) {
+                self._trProps[key] = { value: [0, 0], setValue: function (v) { this.value = v; } };
+              }
+              return self._trProps[key];
             }
           };
         }
@@ -362,6 +370,43 @@ function runSuite() {
   console.log("  Twemoji Group 1:", twGroups[0].name);
   console.log("  Twemoji Group 2:", twGroups[1].name);
   console.log("✔ Twemoji Flat Color shapes populated with normalized 46/72 optical em-box metrics!");
+
+  // 6. Verify Right-Aligned Box Text Placement
+  console.log("\n▶ Test 6: Right-Aligned Box Text Emoji Placement");
+  btnRestore.onClick();
+  const boxLayer = mockComp.layers.addText("Right aligned box text with popcorn 🍿 and tent 🎪!");
+  boxLayer.name = "Right Aligned Box Layer";
+  boxLayer.boxText = true;
+  boxLayer.boxTextSize = [800, 300];
+  boxLayer.boxTextPos = [0, 0];
+  boxLayer._textDoc.boxText = true;
+  boxLayer._textDoc.boxTextSize = [800, 300];
+  boxLayer._textDoc.boxTextPos = [0, 0];
+  boxLayer._textDoc.justification = 7413; // ParagraphJustification.RIGHT_JUSTIFY
+  mockComp.selectedLayers = [boxLayer];
+  btnExecute.onClick();
+
+  const boxShape = mockComp.layers._layers.find(l => l.name === "Right Aligned Box Layer - Color Emojis");
+  if (!boxShape) throw new Error("Right aligned box shape layer not found!");
+  const boxGroups = boxShape._vectors;
+  if (boxGroups.length !== 2) throw new Error("Expected 2 emoji groups in right-aligned box text, got " + boxGroups.length);
+
+  // Check positions of both emojis - they must be positioned on the right side within [0, 800]
+  const pos1 = boxGroups[0].property("Transform").property("Position").value;
+  console.log("  Box Emoji 1 (🍿) Position:", pos1);
+  if (pos1[0] < 0 || pos1[0] > 800) {
+    throw new Error("Emoji 1 X coordinate (" + pos1[0] + ") is outside valid box width [0, 800]!");
+  }
+  const pos2 = boxGroups[1].property("Transform").property("Position").value;
+  console.log("  Box Emoji 2 (🎪) Position:", pos2);
+  if (pos2[0] < 0 || pos2[0] > 800) {
+    throw new Error("Emoji 2 X coordinate (" + pos2[0] + ") is outside valid box width [0, 800]!");
+  }
+  // Because text is right-aligned in an 800px box, emojis must be on the right half (> 400px)
+  if (pos1[0] < 200 || pos2[0] < 200) {
+    throw new Error("Emojis are misplaced to the left in right-aligned box text!");
+  }
+  console.log("✔ Right-aligned Box Text correctly placed emojis on the right side within [0, 800]!");
 
   console.log("\n========================================================");
   console.log("🎉 ALL TESTS PASSED SUCCESSFULLY!");
