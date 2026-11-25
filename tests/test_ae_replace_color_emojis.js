@@ -170,8 +170,9 @@ function createMockAEP() {
                 addProperty: function (effType) {
                   const eff = {
                     name: effType,
+                    _prop1: { value: 0, setValue: function (v) { this.value = v; } },
                     property: function () {
-                      return { value: 0, setValue: function (v) { this.value = v; } };
+                      return this._prop1;
                     }
                   };
                   sl._effects.push(eff);
@@ -298,6 +299,11 @@ function runSuite() {
   if (!colorEmojiShape) throw new Error("Master Color Emojis shape layer was not created!");
   console.log("✔ Master Shape Layer created:", colorEmojiShape.name);
   console.log("✔ Sliders attached:", colorEmojiShape._effects.map(e => e.name));
+  const multEffect = colorEmojiShape._effects.find(e => e.name === "Emoji Size Multiplier %");
+  if (!multEffect || multEffect.property(1).value !== 130) {
+    throw new Error("Expected Emoji Size Multiplier % to be 130! Found: " + (multEffect ? multEffect.property(1).value : "missing"));
+  }
+  console.log("✔ Verified Emoji Size Multiplier % is set to 130% (+30% larger)");
   console.log("✔ Vector emoji groups populated:", colorEmojiShape._vectors.length);
   if (colorEmojiShape._vectors.length < 5) throw new Error("Expected at least 5 emoji groups!");
 
