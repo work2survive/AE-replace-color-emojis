@@ -226,20 +226,26 @@ function runSuite() {
   const { mockComp, CompItem } = createMockAEP();
   const uiElements = [];
 
-  function makeUIElement(what, text) {
+  function makeUIElement(what, bounds, text, min, max) {
+    var txt = (typeof text === "string") ? text : ((typeof bounds === "string") ? bounds : "");
+    var itemsArr = Array.isArray(text) ? text : (Array.isArray(bounds) ? bounds : []);
+    var initialVal = (typeof text === "number") ? text : ((typeof bounds === "number") ? bounds : false);
+
     const el = {
       type: what,
-      text: text,
-      value: false,
-      items: [],
+      text: txt,
+      value: initialVal,
+      min: (typeof min === "number") ? min : ((typeof text === "number") ? text : 0),
+      max: (typeof max === "number") ? max : 100,
+      items: itemsArr.map((t, idx) => ({ text: t, index: idx })),
       selection: { index: 0 },
-      add: function (w2, b2, t2) {
+      add: function (w2, b2, t2, a4, a5) {
         if (what === "dropdownlist" && w2 === "item") {
           const it = { text: b2, index: el.items.length };
           el.items.push(it);
           return it;
         }
-        return makeUIElement(w2, t2);
+        return makeUIElement(w2, b2, t2, a4, a5);
       },
       preferredSize: {},
       alignment: [],
@@ -247,9 +253,6 @@ function runSuite() {
       spacing: 0,
       graphics: { foregroundColor: null, newPen: () => ({}) }
     };
-    if (Array.isArray(text)) {
-      el.items = text.map((t, idx) => ({ text: t, index: idx }));
-    }
     uiElements.push(el);
     return el;
   }
@@ -265,7 +268,7 @@ function runSuite() {
     Shape: function () { this.vertices = []; this.inTangents = []; this.outTangents = []; this.closed = false; },
     Panel: function () {},
     Window: function (type, title) {
-      this.add = function (what, b, text) { return makeUIElement(what, text); };
+      this.add = function (what, b, text) { return makeUIElement(what, b, text); };
       this.center = function () {};
       this.show = function () {};
       this.layout = { resize: function () {}, layout: function () {} };
@@ -285,6 +288,12 @@ function runSuite() {
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox);
   console.log("✔ Script initialized. Clean UI elements count:", uiElements.length);
+
+  // Verify Scale Offset UI options
+  const slScale = uiElements.find(e => e.type === "slider");
+  if (!slScale) throw new Error("Scale Offset slider was not found in UI options!");
+  console.log("✔ Scale Offset slider found with default value:", slScale.value);
+  if (slScale.value !== 20) throw new Error("Expected default Scale Offset to be 20 (+20% bigger), found: " + slScale.value);
 
   // 1. Trigger Demo Text creation
   console.log("\n▶ Test 1: Create Demo Text with Emojis");
@@ -307,11 +316,11 @@ function runSuite() {
   if (!colorEmojiShape) throw new Error("Master Color Emojis shape layer was not created!");
   console.log("✔ Master Shape Layer created:", colorEmojiShape.name);
   console.log("✔ Sliders attached:", colorEmojiShape._effects.map(e => e.name));
-  const multEffect = colorEmojiShape._effects.find(e => e.name === "Emoji Size Multiplier %");
-  if (!multEffect || multEffect.property(1).value !== 130) {
-    throw new Error("Expected Emoji Size Multiplier % to be 130! Found: " + (multEffect ? multEffect.property(1).value : "missing"));
+  const scaleOffsetEffect = colorEmojiShape._effects.find(e => e.name === "Scale Offset %");
+  if (!scaleOffsetEffect || scaleOffsetEffect.property(1).value !== 20) {
+    throw new Error("Expected Scale Offset % to be 20! Found: " + (scaleOffsetEffect ? scaleOffsetEffect.property(1).value : "missing"));
   }
-  console.log("✔ Verified Emoji Size Multiplier % is set to 130% (+30% larger)");
+  console.log("✔ Verified Scale Offset % is set to 20% (+20% larger default scale)");
   console.log("✔ Vector emoji groups populated:", colorEmojiShape._vectors.length);
   if (colorEmojiShape._vectors.length < 5) throw new Error("Expected at least 5 emoji groups!");
 
@@ -407,6 +416,30 @@ function runSuite() {
     throw new Error("Emojis are misplaced to the left in right-aligned box text!");
   }
   console.log("✔ Right-aligned Box Text correctly placed emojis on the right side within [0, 800]!");
+
+  // 7. Verify Interactive Scale Offset Slider Adjustment
+  console.log("\n▶ Test 7: Interactive Scale Offset Slider Adjustment (+40% scale offset)");
+  btnRestore.onClick();
+  slScale.value = 40; // Change to +40%
+  const offsetLayer = mockComp.layers.addText("Scale offset test 🚀");
+  offsetLayer.name = "Scale Offset Layer";
+  mockComp.selectedLayers = [offsetLayer];
+  btnExecute.onClick();
+
+  const offsetShape = mockComp.layers._layers.find(l => l.name === "Scale Offset Layer - Color Emojis");
+  if (!offsetShape) throw new Error("Scale Offset shape layer not found!");
+  const effSo = offsetShape._effects.find(e => e.name === "Scale Offset %");
+  if (!effSo || effSo.property(1).value !== 40) {
+    throw new Error("Expected Scale Offset % effect to be 40, got " + (effSo ? effSo.property(1).value : "missing"));
+  }
+  const sScale = offsetShape._vectors[0].property("Transform").property("Scale").value;
+  console.log("  Calculated Scale for +40% Offset (140%):", sScale);
+  // Base font size is 48. Scale pct = (48 * 1.4 / 72) * 100 = 93.333%
+  const expectedScale = ((48 * 1.4 / 72.0) * 100);
+  if (Math.abs(sScale[0] - expectedScale) > 0.01) {
+    throw new Error("Expected vector scale to be " + expectedScale + ", got " + sScale[0]);
+  }
+  console.log("✔ Interactive Scale Offset adjustment successfully verified!");
 
   console.log("\n========================================================");
   console.log("🎉 ALL TESTS PASSED SUCCESSFULLY!");

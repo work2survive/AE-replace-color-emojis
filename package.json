@@ -1,6 +1,6 @@
 {
   "name": "ae-replace-color-emojis",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Procedural After Effects ScriptUI tool that scans text layers for monochrome font emojis and replaces them with native full-color vector shape layer emojis.",
   "main": "AE_Replace_Color_Emojis.jsx",
   "scripts": {

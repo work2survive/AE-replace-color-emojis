@@ -20,9 +20,10 @@ Adobe After Effects text layers lack native rendering for color emoji font table
 
 ---
 
-## What's New in v2.0.1
+## What's New in v2.0.2
 
-- 🌟 **+30% Optical Sizing (130% Default Multiplier)**: Emojis are automatically rendered 30% larger than font size by default to visually balance with font ascenders and capital heights.
+- 🎚️ **Interactive Scale Offset in Options**: Added an interactive **Scale Offset** slider (`-50%` to `+150%`) with numeric edit box directly in the ScriptUI Options panel. Real-time visual feedback displays both the relative offset and the absolute effective scale (e.g., `+20% (120%)`).
+- 🌟 **20% Bigger Default Scale (+20% Scale Offset / 120% Scale)**: Balanced optical scale calibrated to visually harmonize with typeface ascenders and capital heights without overcrowding.
 - ⚡ **Silent & Fast Workflow**: Removed blocking modal alert dialogs upon successful replacement, enabling smooth keyboard shortcuts and uninterrupted production work.
 - 🎛️ **Reorganized Visual UI Hierarchy**: Clean layout placing the primary **`✨ Replace Font Emojis with Color Emojis`** action button prominently at the base of the panel, with **`↺ Restore Text Layer`** and **`🧪 Create Demo Test`** neatly positioned side-by-side underneath.
 - 📦 **Box-Text Word Wrapping & Right-Alignment Support**: Advanced paragraph text measurement handles multi-line word wrapping and right-aligned box text with zero glyph drift.
@@ -76,7 +77,8 @@ Choose from 4 vector styles:
 
 Each generated Shape Layer includes live effect controls:
 - **`Emoji Size (px)`**: Master size in pixels (calibrated to text font size).
-- **`Emoji Size Multiplier %`**: Interactive scaling relative to font size (default **130%** for optical balance).
+- **`Scale Offset %`**: Interactive offset relative to font size (default **+20%** for 120% optical balance).
+- **`Emoji Size Multiplier %`**: Interactive master scale multiplier (default 100%).
 - **`Outline Width %`**: Interactive stroke width adjustment for OpenMoji line art.
 - **`Show Outlines`**: Checkbox to toggle line-art outlines on or off.
 - **`Offset X` & `Offset Y`**: Fine-tune horizontal and vertical alignment.
