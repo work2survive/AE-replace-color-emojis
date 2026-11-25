@@ -20,7 +20,17 @@ Adobe After Effects text layers lack native rendering for color emoji font table
 
 ---
 
-## Key Features
+## What's New in v2.0.1
+
+- 🌟 **+30% Optical Sizing (130% Default Multiplier)**: Emojis are automatically rendered 30% larger than font size by default to visually balance with font ascenders and capital heights.
+- ⚡ **Silent & Fast Workflow**: Removed blocking modal alert dialogs upon successful replacement, enabling smooth keyboard shortcuts and uninterrupted production work.
+- 🎛️ **Reorganized Visual UI Hierarchy**: Clean layout placing the primary **`✨ Replace Font Emojis with Color Emojis`** action button prominently at the base of the panel, with **`↺ Restore Text Layer`** and **`🧪 Create Demo Test`** neatly positioned side-by-side underneath.
+- 📦 **Box-Text Word Wrapping & Right-Alignment Support**: Advanced paragraph text measurement handles multi-line word wrapping and right-aligned box text with zero glyph drift.
+- 🧹 **Zero External Dependencies**: Self-contained ES3 JSX bundle with zero runtime disk reads or external JSON dependencies required.
+
+---
+
+### Key Features
 
 ### 1. Dual Replacement Engines
 
@@ -66,7 +76,7 @@ Choose from 4 vector styles:
 
 Each generated Shape Layer includes live effect controls:
 - **`Emoji Size (px)`**: Master size in pixels (calibrated to text font size).
-- **`Emoji Size Multiplier %`**: Interactive scaling relative to font size (default 100%).
+- **`Emoji Size Multiplier %`**: Interactive scaling relative to font size (default **130%** for optical balance).
 - **`Outline Width %`**: Interactive stroke width adjustment for OpenMoji line art.
 - **`Show Outlines`**: Checkbox to toggle line-art outlines on or off.
 - **`Offset X` & `Offset Y`**: Fine-tune horizontal and vertical alignment.
